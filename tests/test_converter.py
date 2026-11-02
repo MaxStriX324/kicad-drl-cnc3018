@@ -89,7 +89,7 @@ class ConverterTests(unittest.TestCase):
             self.assertIn("G0 X3.000 Y-4.000", code)
             with self.assertRaisesRegex(DrillFileError, "Найдены только"):
                 convert(path, Path(tmp) / "skip", skip_slots=True)
-            with self.assertRaisesRegex(DrillFileError, "пазы"):
+            with self.assertRaisesRegex(DrillFileError, "сегментов пазов"):
                 convert(path, Path(tmp) / "strict", skip_slots=False)
 
     def test_invalid_contour_step_rejected(self):
