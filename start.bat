@@ -1,38 +1,29 @@
 @echo off
-chcp 65001 >nul
 setlocal EnableExtensions
+chcp 65001 >nul
 cd /d "%~dp0"
 title KiCad DRL to GRBL TAP - CNC3018
-set "SCRIPT=%~dp0drl_to_tap.py"
+set "PYTHONUTF8=1"
+set "PYTHON_CMD="
 
-where py >nul 2>&1
-if not errorlevel 1 (
-    set "PYTHON=py -3"
-) else (
-    where python >nul 2>&1
-    if errorlevel 1 (
-        echo Python not found. Run install.bat first.
-        pause
-        exit /b 1
-    )
-    set "PYTHON=python"
+rem Validate the interpreter, not just the presence of a Windows Store alias.
+py -3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+if not errorlevel 1 set "PYTHON_CMD=py -3"
+if not defined PYTHON_CMD (
+    python -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+    if not errorlevel 1 set "PYTHON_CMD=python"
 )
-
-if "%~1"=="" (
-    echo Drag a KiCad .drl file onto start.bat or enter full path below.
-    set /p "DRL=DRL file: "
-) else (
-    set "DRL=%~1"
-)
-if not defined DRL (
-    echo No file selected.
+if not defined PYTHON_CMD (
+    echo ERROR: Python 3.10+ not found or cannot be started.
+    echo Run install.bat and reopen this window.
     pause
     exit /b 1
 )
 
-rem User may add extra CLI options after filename, e.g. --skip-slots --z-drill -1.8
-%PYTHON% "%SCRIPT%" "%DRL%" %2 %3 %4 %5 %6 %7 %8 %9
+rem No filename prompt: without arguments, scan this folder and input/ automatically.
+rem Drag one or more DRL files or directories onto this launcher if preferred.
+%PYTHON_CMD% "%~dp0auto_convert.py" %*
 set "CODE=%errorlevel%"
-if not "%CODE%"=="0" echo Conversion failed. See message above.
-pause
+if not "%CODE%"=="0" echo Check conversion_report.txt for details.
+if "%~1"=="" pause
 exit /b %CODE%
