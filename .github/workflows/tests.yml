@@ -25,6 +25,6 @@ jobs:
         shell: cmd
         run: |
           copy examples\sample_board.drl ci_test.drl
-          call start.bat --skip-slots
-          if not exist ci_test_0p800mm.tap exit /b 1
-          if not exist ci_test_1p000mm.tap exit /b 1
+          call start.bat --contour-step 1
+          if not exist ci_test.tap exit /b 1
+          if exist ci_test_0p800mm.tap exit /b 1

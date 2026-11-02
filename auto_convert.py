@@ -9,7 +9,7 @@ from pathlib import Path
 import sys
 import traceback
 
-from drl_to_tap import DrillFileError, convert
+from drl_to_tap import DrillFileError, add_arguments, convert
 
 ROOT = Path(__file__).resolve().parent
 REPORT_NAME = "conversion_report.txt"
@@ -50,24 +50,11 @@ def find_inputs(paths: list[Path], root: Path = ROOT) -> list[Path]:
 
 def run(argv: list[str] | None = None, root: Path = ROOT) -> int:
     parser = argparse.ArgumentParser(
-        description="Автоматическая конвертация всех .drl в .tap (отдельно на каждый диаметр)"
+        description="Автоматическая конвертация DRL в один непрерывный TAP на файл с высверливанием контура"
     )
     parser.add_argument("paths", nargs="*", type=Path,
                         help="Необязательно: файлы DRL или папки. Без аргументов: папка программы и input/")
-    parser.add_argument("--output-dir", type=Path,
-                        help="Папка результата (по умолчанию TAP рядом с каждым DRL)")
-    parser.add_argument("--z-safe", type=float, default=5.0)
-    parser.add_argument("--z-approach", type=float, default=0.5)
-    parser.add_argument("--z-drill", type=float, default=-2.4)
-    parser.add_argument("--feed", type=float, default=50)
-    parser.add_argument("--spindle", type=int, default=10000)
-    parser.add_argument("--dwell", type=float, default=2)
-    slot_options = parser.add_mutually_exclusive_group()
-    slot_options.add_argument("--skip-slots", dest="skip_slots", action="store_true",
-                              help="Пропускать фрезеруемые пазы (по умолчанию)")
-    slot_options.add_argument("--strict-slots", dest="skip_slots", action="store_false",
-                              help="Останавливать конвертацию при наличии фрезеруемых пазов")
-    parser.set_defaults(skip_slots=True)
+    add_arguments(parser)
     args = parser.parse_args(argv)
 
     report = [f"DRL -> TAP, {datetime.now().isoformat(timespec='seconds')}",
@@ -99,12 +86,15 @@ def run(argv: list[str] | None = None, root: Path = ROOT) -> int:
                             drill_z=args.z_drill, feed=args.feed,
                             spindle=args.spindle, dwell=args.dwell,
                             skip_slots=args.skip_slots,
+                            contour_step=args.contour_step,
                             stats=stats,
                         )
                         success += 1
                         generated += len(outputs)
-                        detail = (f"; круглых отверстий: {stats['holes']}; "
-                                  f"пропущено сегментов пазов: {stats['slots']}") if "holes" in stats else ""
+                        detail = (f"; обычных отверстий: {stats['holes']}; "
+                                  f"режущих сегментов: {stats['slots']}; "
+                                  f"точек контура: {stats['contour_points']}; "
+                                  f"всего уникальных позиций: {stats['drill_positions']}") if "holes" in stats else ""
                         report.append(f"OK: {source} -> {len(outputs)} TAP{detail}")
                     except (DrillFileError, OSError, UnicodeError, ValueError) as exc:
                         failed += 1
