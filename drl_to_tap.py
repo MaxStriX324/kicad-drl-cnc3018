@@ -112,7 +112,10 @@ def read_drills(path: Path) -> tuple[dict[float, list[tuple[float, float]]], int
     if zero_suppression:
         raise DrillFileError("LZ/TZ с подавлением нулей пока не поддерживается; в KiCad включите keep zeros")
     if not tools or not holes:
-        raise DrillFileError("Не найдены определения инструментов или сверления")
+        if slots:
+            raise DrillFileError(f"Круглые отверстия не найдены; обнаружено {slots} сегментов пазов, "
+                                 "которые не переводятся в сверление")
+        raise DrillFileError("Не найдены определения инструментов или круглые отверстия")
     return dict(holes), slots
 
 
@@ -137,7 +140,7 @@ def make_gcode(points: list[tuple[float, float]], safe_z: float, approach_z: flo
 def convert(source: Path, output_dir: Path, *, safe_z: float = 5.0,
             approach_z: float = 0.5, drill_z: float = -2.4,
             feed: float = 50.0, spindle: int = 10000, dwell: float = 2.0,
-            skip_slots: bool = False) -> list[Path]:
+            skip_slots: bool = True, stats: dict[str, int] | None = None) -> list[Path]:
     if not (safe_z > approach_z > drill_z and drill_z < 0):
         raise DrillFileError("Требуется z-safe > z-approach > z-drill и z-drill < 0")
     if feed <= 0 or spindle <= 0 or dwell < 0:
@@ -145,6 +148,9 @@ def convert(source: Path, output_dir: Path, *, safe_z: float = 5.0,
     if not source.is_file():
         raise DrillFileError(f"Файл не найден: {source}")
     holes, slots = read_drills(source)
+    if stats is not None:
+        stats['holes'] = sum(len(points) for points in holes.values())
+        stats['slots'] = slots
     if slots and not skip_slots:
         raise DrillFileError(
             f"Обнаружены фрезеруемые пазы/слоты ({slots}). "
@@ -178,7 +184,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--feed", type=float, default=50, help="Подача по Z, мм/мин [50]")
     parser.add_argument("--spindle", type=int, default=10000, help="Команда GRBL S [10000], сверить с $30")
     parser.add_argument("--dwell", type=float, default=2, help="Пауза раскрутки шпинделя, сек [2]")
-    parser.add_argument("--skip-slots", action="store_true", help="Пропустить фрезеруемые пазы с предупреждением")
+    slot_options = parser.add_mutually_exclusive_group()
+    slot_options.add_argument("--skip-slots", dest="skip_slots", action="store_true",
+                              help="Пропускать фрезеруемые пазы (по умолчанию)")
+    slot_options.add_argument("--strict-slots", dest="skip_slots", action="store_false",
+                              help="Останавливать конвертацию, если найдены фрезеруемые пазы")
+    parser.set_defaults(skip_slots=True)
     args = parser.parse_args(argv)
     try:
         outputs = convert(args.drl, args.output_dir or args.drl.parent,
