@@ -106,6 +106,12 @@ def run(argv: list[str] | None = None, root: Path = ROOT) -> int:
                                   f"холостые XY: {stats['xy_before_mm']:.1f} -> "
                                   f"{stats['xy_after_mm']:.1f} мм") if "holes" in stats else ""
                         report.append(f"OK: {source} -> {len(outputs)} TAP{detail}")
+                        if stats.get("diameters", 0) > 1:
+                            report.append(
+                                "ВНИМАНИЕ: в DRL несколько номинальных диаметров. "
+                                "В одном TAP физически одно сверло: все отверстия "
+                                "получатся по диаметру установленного инструмента."
+                            )
                     except (DrillFileError, OSError, UnicodeError, ValueError) as exc:
                         failed += 1
                         report.append(f"ОШИБКА: {source}\n    {exc}")
