@@ -1,0 +1,12 @@
+{
+  "z_safe": 5,
+  "z_approach": 0.5,
+  "z_drill": -2.4,
+  "feed": 50,
+  "spindle": 10000,
+  "contour_step": 1,
+  "column_width": 1,
+  "slot_mode": "drill",
+  "source_path": "",
+  "output_dir": ""
+}
