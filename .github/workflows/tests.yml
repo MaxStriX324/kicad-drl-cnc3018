@@ -1,0 +1,30 @@
+name: DRL to TAP regression tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  converter:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Unit and integration tests
+        run: python -m unittest discover -s tests -v
+      - name: Windows launch script smoke test
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          copy examples\sample_board.drl ci_test.drl
+          call start.bat --skip-slots
+          if not exist ci_test_0p800mm.tap exit /b 1
+          if not exist ci_test_1p000mm.tap exit /b 1
