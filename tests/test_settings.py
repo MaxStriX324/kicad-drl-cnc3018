@@ -88,6 +88,8 @@ class SettingsTests(unittest.TestCase):
             self.assertIn("M3 S1200", contents)
             self.assertIn("F31", contents)
             self.assertNotIn("G4 P", contents)
+            report = (root / "conversion_report.txt").read_text(encoding="utf-8-sig")
+            self.assertIn("одно сверло", report)
 
     def test_explicit_cli_override_takes_priority_over_settings(self):
         with tempfile.TemporaryDirectory() as tmp:
