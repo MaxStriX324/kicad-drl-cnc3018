@@ -52,6 +52,34 @@ class AutoConvertTests(unittest.TestCase):
             self.assertIn("G0 X10.000 Y-9.000", second)
             self.assertIn("M5", second)
 
+    def test_real_drill_file_with_routed_slot_generates_taps_and_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sample = (Path(__file__).resolve().parents[1] / "examples" / "sample_board.drl")
+            content = sample.read_text()
+            content = content.replace("M30", "G00X003000Y-003000\nM15\nG01X003000Y-006000\nM16\nG05\nM30")
+            (root / "routed.drl").write_text(content)
+            code = auto_convert.run([], root)
+            self.assertEqual(code, 0)
+            taps = sorted(root.glob("routed_*.tap"))
+            self.assertEqual(len(taps), 2)
+            gcode = "\n".join(p.read_text() for p in taps)
+            self.assertNotIn("X3.000 Y-3.000", gcode)
+            self.assertNotIn("X3.000 Y-6.000", gcode)
+            report = (root / "conversion_report.txt").read_text(encoding="utf-8-sig")
+            self.assertIn("круглых отверстий: 3", report)
+            self.assertIn("пропущено сегментов пазов: 1", report)
+
+    def test_strict_slots_opt_in_rejects_routed_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sample = (Path(__file__).resolve().parents[1] / "examples" / "sample_board.drl")
+            (root / "strict.drl").write_text(
+                sample.read_text().replace("M30", "G00X003000Y-003000\nM15\nG01X003000Y-006000\nM16\nG05\nM30")
+            )
+            self.assertEqual(auto_convert.run(["--strict-slots"], root), 1)
+            self.assertEqual(list(root.glob("*.tap")), [])
+
     def test_bad_file_does_not_abort_batch(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

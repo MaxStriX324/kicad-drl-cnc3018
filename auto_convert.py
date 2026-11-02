@@ -62,8 +62,12 @@ def run(argv: list[str] | None = None, root: Path = ROOT) -> int:
     parser.add_argument("--feed", type=float, default=50)
     parser.add_argument("--spindle", type=int, default=10000)
     parser.add_argument("--dwell", type=float, default=2)
-    parser.add_argument("--skip-slots", action="store_true",
-                        help="Пропускать пазы; только если они будут обработаны отдельно")
+    slot_options = parser.add_mutually_exclusive_group()
+    slot_options.add_argument("--skip-slots", dest="skip_slots", action="store_true",
+                              help="Пропускать фрезеруемые пазы (по умолчанию)")
+    slot_options.add_argument("--strict-slots", dest="skip_slots", action="store_false",
+                              help="Останавливать конвертацию при наличии фрезеруемых пазов")
+    parser.set_defaults(skip_slots=True)
     args = parser.parse_args(argv)
 
     report = [f"DRL -> TAP, {datetime.now().isoformat(timespec='seconds')}",
@@ -88,16 +92,20 @@ def run(argv: list[str] | None = None, root: Path = ROOT) -> int:
             else:
                 for source in files:
                     try:
+                        stats: dict[str, int] = {}
                         outputs = convert(
                             source, args.output_dir or source.parent,
                             safe_z=args.z_safe, approach_z=args.z_approach,
                             drill_z=args.z_drill, feed=args.feed,
                             spindle=args.spindle, dwell=args.dwell,
                             skip_slots=args.skip_slots,
+                            stats=stats,
                         )
                         success += 1
                         generated += len(outputs)
-                        report.append(f"OK: {source} -> {len(outputs)} TAP")
+                        detail = (f"; круглых отверстий: {stats['holes']}; "
+                                  f"пропущено сегментов пазов: {stats['slots']}") if "holes" in stats else ""
+                        report.append(f"OK: {source} -> {len(outputs)} TAP{detail}")
                     except (DrillFileError, OSError, UnicodeError, ValueError) as exc:
                         failed += 1
                         report.append(f"ОШИБКА: {source}\n    {exc}")
