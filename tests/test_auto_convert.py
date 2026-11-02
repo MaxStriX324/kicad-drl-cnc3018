@@ -38,19 +38,20 @@ class AutoConvertTests(unittest.TestCase):
             self.assertEqual(fn.call_count, 2)
             self.assertIn("обработано 2, ошибок 0, создано TAP 2", (root / "conversion_report.txt").read_text(encoding="utf-8-sig"))
 
-    def test_real_kicad_sample_generates_one_tap_per_diameter(self):
+    def test_real_kicad_sample_generates_one_tap_without_pause(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             sample = (Path(__file__).resolve().parents[1] / "examples" / "sample_board.drl")
             (root / "board.drl").write_bytes(sample.read_bytes())
             code = auto_convert.run([], root)
             self.assertEqual(code, 0)
-            first = (root / "board_0p800mm.tap").read_text()
-            second = (root / "board_1p000mm.tap").read_text()
-            self.assertIn("G0 X5.000 Y-5.000", first)
-            self.assertIn("G0 X7.540 Y-5.000", first)
-            self.assertIn("G0 X10.000 Y-9.000", second)
-            self.assertIn("M5", second)
+            self.assertEqual([p.name for p in root.glob("*.tap")], ["board.tap"])
+            code = (root / "board.tap").read_text()
+            self.assertIn("G0 X5.000 Y-5.000", code)
+            self.assertIn("G0 X7.540 Y-5.000", code)
+            self.assertIn("G0 X10.000 Y-9.000", code)
+            self.assertIn("M5", code)
+            self.assertNotIn("G4 P", code)
 
     def test_real_drill_file_with_routed_slot_generates_taps_and_report(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -62,13 +63,16 @@ class AutoConvertTests(unittest.TestCase):
             code = auto_convert.run([], root)
             self.assertEqual(code, 0)
             taps = sorted(root.glob("routed_*.tap"))
-            self.assertEqual(len(taps), 2)
-            gcode = "\n".join(p.read_text() for p in taps)
-            self.assertNotIn("X3.000 Y-3.000", gcode)
-            self.assertNotIn("X3.000 Y-6.000", gcode)
+            self.assertEqual([p.name for p in taps], ["routed.tap"])
+            gcode = taps[0].read_text()
+            self.assertIn("X3.000 Y-3.000", gcode)
+            self.assertIn("X3.000 Y-4.000", gcode)
+            self.assertIn("X3.000 Y-6.000", gcode)
             report = (root / "conversion_report.txt").read_text(encoding="utf-8-sig")
-            self.assertIn("круглых отверстий: 3", report)
-            self.assertIn("пропущено сегментов пазов: 1", report)
+            self.assertIn("обычных отверстий: 3", report)
+            self.assertIn("режущих сегментов: 1", report)
+            self.assertIn("точек контура: 4", report)
+            self.assertIn("всего уникальных позиций: 7", report)
 
     def test_strict_slots_opt_in_rejects_routed_file(self):
         with tempfile.TemporaryDirectory() as tmp:
