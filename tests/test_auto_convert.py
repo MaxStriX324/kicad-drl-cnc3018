@@ -38,6 +38,20 @@ class AutoConvertTests(unittest.TestCase):
             self.assertEqual(fn.call_count, 2)
             self.assertIn("обработано 2, ошибок 0, создано TAP 2", (root / "conversion_report.txt").read_text(encoding="utf-8-sig"))
 
+    def test_real_kicad_sample_generates_one_tap_per_diameter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sample = (Path(__file__).resolve().parents[1] / "examples" / "sample_board.drl")
+            (root / "board.drl").write_bytes(sample.read_bytes())
+            code = auto_convert.run([], root)
+            self.assertEqual(code, 0)
+            first = (root / "board_0p800mm.tap").read_text()
+            second = (root / "board_1p000mm.tap").read_text()
+            self.assertIn("G0 X5.000 Y-5.000", first)
+            self.assertIn("G0 X7.540 Y-5.000", first)
+            self.assertIn("G0 X10.000 Y-9.000", second)
+            self.assertIn("M5", second)
+
     def test_bad_file_does_not_abort_batch(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
