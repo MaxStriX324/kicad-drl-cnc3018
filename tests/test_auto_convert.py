@@ -52,6 +52,17 @@ class AutoConvertTests(unittest.TestCase):
             self.assertIn("G0 X10.000 Y-9.000", code)
             self.assertIn("M5", code)
             self.assertNotIn("G4 P", code)
+            report = (root / "conversion_report.txt").read_text(encoding="utf-8-sig")
+            self.assertIn("холостые XY:", report)
+
+    def test_batch_accepts_vertical_column_width(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sample = (Path(__file__).resolve().parents[1] / "examples" / "sample_board.drl")
+            (root / "board.drl").write_bytes(sample.read_bytes())
+            code = auto_convert.run(["--column-width", "2.0"], root)
+            self.assertEqual(code, 0)
+            self.assertTrue((root / "board.tap").exists())
 
     def test_real_drill_file_with_routed_slot_generates_taps_and_report(self):
         with tempfile.TemporaryDirectory() as tmp:
