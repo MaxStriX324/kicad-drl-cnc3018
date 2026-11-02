@@ -62,7 +62,7 @@ class AutoConvertTests(unittest.TestCase):
             (root / "routed.drl").write_text(content)
             code = auto_convert.run([], root)
             self.assertEqual(code, 0)
-            taps = sorted(root.glob("routed_*.tap"))
+            taps = sorted(root.glob("routed*.tap"))
             self.assertEqual([p.name for p in taps], ["routed.tap"])
             gcode = taps[0].read_text()
             self.assertIn("X3.000 Y-3.000", gcode)
