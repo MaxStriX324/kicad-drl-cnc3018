@@ -3,5 +3,7 @@ __pycache__/
 .venv/
 venv/
 output/
+input/
+conversion_report.txt
 *.tap
 !examples/*.tap
