@@ -1,30 +1,51 @@
 @echo off
-setlocal
+setlocal EnableExtensions
+chcp 65001 >nul
 cd /d "%~dp0"
-where py >nul 2>&1
-if not errorlevel 1 goto success
-where python >nul 2>&1
+set "PYTHONUTF8=1"
+
+call :check_python
 if not errorlevel 1 goto success
 
-echo Python 3 not found. Attempting Python 3 installation with winget.
+echo Python 3.10+ is missing or cannot be started.
 where winget >nul 2>&1
 if errorlevel 1 (
-    echo winget is unavailable. Install Python from https://www.python.org/downloads/
-    echo Enable 'Add Python to PATH', reopen the terminal, then run start.bat.
+    echo Install Python 3.10+ from https://www.python.org/downloads/
+    echo Enable Add python.exe to PATH, then run install.bat again.
     pause
     exit /b 1
 )
+echo Installing Python with winget...
 winget install --id Python.Python.3.13 --exact --source winget --accept-package-agreements --accept-source-agreements
 if errorlevel 1 (
-    echo Installation failed. Install Python manually and retry.
+    echo Python installation failed. Check winget output above.
     pause
     exit /b 1
 )
-echo Python installed. Close/reopen your terminal before running start.bat.
+call :check_python
+if errorlevel 1 (
+    echo Python was installed but is not available in this process yet.
+    echo Open a new terminal and run install.bat again.
+    pause
+    exit /b 1
+)
+
+:success
+if not exist "%~dp0input" mkdir "%~dp0input"
+if not exist "%~dp0auto_convert.py" (
+    echo ERROR: auto_convert.py is missing. Download the complete repository ZIP.
+    pause
+    exit /b 1
+)
+echo Python verified. No additional packages are required.
+echo Put KiCad .drl files beside start.bat or into the input folder.
+echo Double-click start.bat to convert them automatically.
 pause
 exit /b 0
 
-:success
-echo Python detected. No additional packages are required.
-pause
-exit /b 0
+:check_python
+py -3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+if not errorlevel 1 exit /b 0
+python -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+if not errorlevel 1 exit /b 0
+exit /b 1
