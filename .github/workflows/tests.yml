@@ -20,6 +20,12 @@ jobs:
           python-version: '3.13'
       - name: Unit and integration tests
         run: python -m unittest discover -s tests -v
+      - name: Tkinter GUI headless import and config check
+        run: python gui.py --check
+      - name: Windows GUI launcher smoke test
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: call gui.bat --check
       - name: Windows launch script smoke test
         if: runner.os == 'Windows'
         shell: cmd

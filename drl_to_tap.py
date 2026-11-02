@@ -14,6 +14,9 @@ from pathlib import Path
 import re
 import sys
 
+from settings import (SETTINGS_NAME, SettingsError, apply_cli, converter_kwargs,
+                      load_settings)
+
 
 def configure_console_encoding() -> None:
     """Keep Cyrillic diagnostics usable on Windows consoles and CI pipes."""
@@ -394,24 +397,30 @@ def convert(source: Path, output_dir: Path, *, safe_z: float = 5.0,
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--output-dir", type=Path, help="Каталог с TAP (по умолчанию рядом с DRL)")
-    parser.add_argument("--z-safe", type=float, default=5.0)
-    parser.add_argument("--z-approach", type=float, default=0.5)
-    parser.add_argument("--z-drill", type=float, default=-2.4)
-    parser.add_argument("--feed", type=float, default=50.0)
-    parser.add_argument("--spindle", type=int, default=10000)
-    parser.add_argument("--dwell", type=float, default=0.0,
-                        help="Совместимость: параметр игнорируется, пауз G4 нет")
-    parser.add_argument("--contour-step", type=float, default=1.0,
-                        help="Максимальный шаг отверстий вдоль G01/G85 (мм), по умолчанию 1")
-    parser.add_argument("--column-width", type=float, default=1.0,
-                        help="Ширина вертикальных полос для сортировки по Y, мм [1]")
+    """One set of override arguments for CLI and batch; absent means JSON value."""
+    parser.add_argument("--config", type=Path, default=None,
+                        help="JSON-файл настроек; по умолчанию settings.json рядом с программой")
+    parser.add_argument("--output-dir", type=Path, default=None,
+                        help="Каталог с TAP (по умолчанию из settings.json)")
+    parser.add_argument("--z-safe", type=float, default=None)
+    parser.add_argument("--z-approach", type=float, default=None)
+    parser.add_argument("--z-drill", type=float, default=None)
+    parser.add_argument("--feed", type=float, default=None)
+    parser.add_argument("--spindle", type=int, default=None)
+    parser.add_argument("--dwell", type=float, default=None,
+                        help="Параметр совместимости: пауз G4 в TAP нет")
+    parser.add_argument("--contour-step", type=float, default=None,
+                        help="Максимальный шаг отверстий вдоль G01/G85, мм")
+    parser.add_argument("--column-width", type=float, default=None,
+                        help="Ширина вертикальных полос при сортировке по Y, мм")
     route_mode = parser.add_mutually_exclusive_group()
-    route_mode.add_argument("--skip-slots", dest="skip_slots", action="store_true",
-                            help="Игнорировать все пазы/контуры")
-    route_mode.add_argument("--strict-slots", dest="skip_slots", action="store_false",
-                            help="Отменять конвертацию, если есть пазы/контуры")
-    parser.set_defaults(skip_slots=None)
+    route_mode.add_argument("--skip-slots", dest="slot_mode", action="store_const",
+                            const="skip", help="Игнорировать пазы/контуры")
+    route_mode.add_argument("--strict-slots", dest="slot_mode", action="store_const",
+                            const="strict", help="Отменять обработку при наличии пазов")
+    route_mode.add_argument("--drill-slots", dest="slot_mode", action="store_const",
+                            const="drill", help="Высверливать контуры (по умолчанию)")
+    parser.set_defaults(slot_mode=None)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -422,13 +431,12 @@ def main(argv: list[str] | None = None) -> int:
     add_arguments(parser)
     args = parser.parse_args(argv)
     try:
-        outputs = convert(args.drl, args.output_dir or args.drl.parent,
-                          safe_z=args.z_safe, approach_z=args.z_approach,
-                          drill_z=args.z_drill, feed=args.feed, spindle=args.spindle,
-                          dwell=args.dwell, skip_slots=args.skip_slots,
-                          contour_step=args.contour_step,
-                          column_width=args.column_width)
-    except (DrillFileError, OSError, UnicodeError) as exc:
+        cfg_path = args.config if args.config is not None else Path(__file__).resolve().parent / SETTINGS_NAME
+        settings = load_settings(cfg_path)
+        settings, output_dir = apply_cli(settings, args, Path(__file__).resolve().parent)
+        outputs = convert(args.drl, output_dir or args.drl.parent,
+                          **converter_kwargs(settings), dwell=args.dwell or 0)
+    except (DrillFileError, OSError, UnicodeError, SettingsError) as exc:
         print(f"ОШИБКА: {exc}", file=sys.stderr)
         return 1
     print(f"Готово: {len(outputs)} TAP. Проверьте траекторию, установку сверла и глубину в Candle/UGS.")

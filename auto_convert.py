@@ -10,6 +10,8 @@ import sys
 import traceback
 
 from drl_to_tap import DrillFileError, add_arguments, convert
+from settings import (SETTINGS_NAME, SettingsError, apply_cli, converter_kwargs,
+                      load_settings)
 
 ROOT = Path(__file__).resolve().parent
 REPORT_NAME = "conversion_report.txt"
@@ -61,8 +63,17 @@ def run(argv: list[str] | None = None, root: Path = ROOT) -> int:
               f"Python: {sys.version.split()[0]}", f"Каталог программы: {root}"]
     success = failed = generated = 0
     try:
-        files = find_inputs(args.paths, root)
-    except (DrillFileError, OSError) as exc:
+        config_path = args.config if args.config is not None else root / SETTINGS_NAME
+        settings, output_dir = apply_cli(load_settings(config_path), args, root)
+        search_paths = list(args.paths)
+        if not search_paths and settings["source_path"].strip():
+            selected = Path(settings["source_path"]).expanduser()
+            if not selected.is_absolute():
+                selected = root / selected
+            search_paths = [selected]
+        files = find_inputs(search_paths, root)
+        report.append(f"Настройки: {config_path}")
+    except (DrillFileError, OSError, SettingsError) as exc:
         files = []
         failed += 1
         report.append(f"ОШИБКА: {exc}")
@@ -72,7 +83,7 @@ def run(argv: list[str] | None = None, root: Path = ROOT) -> int:
                           "или в папку input, затем повторно запустите start.bat.")
         else:
             report.append(f"Найдено DRL-файлов: {len(files)}")
-            if args.output_dir and len({p.stem.casefold() for p in files}) != len(files):
+            if output_dir and len({p.stem.casefold() for p in files}) != len(files):
                 failed += 1
                 report.append("ОШИБКА: одинаковые имена DRL из разных папок при --output-dir "
                               "могут перезаписать TAP. Уберите --output-dir либо переименуйте файлы.")
@@ -81,13 +92,9 @@ def run(argv: list[str] | None = None, root: Path = ROOT) -> int:
                     try:
                         stats: dict[str, int | float] = {}
                         outputs = convert(
-                            source, args.output_dir or source.parent,
-                            safe_z=args.z_safe, approach_z=args.z_approach,
-                            drill_z=args.z_drill, feed=args.feed,
-                            spindle=args.spindle, dwell=args.dwell,
-                            skip_slots=args.skip_slots,
-                            contour_step=args.contour_step,
-                            column_width=args.column_width,
+                            source, output_dir or source.parent,
+                            **converter_kwargs(settings),
+                            dwell=args.dwell or 0,
                             stats=stats,
                         )
                         success += 1
@@ -99,6 +106,12 @@ def run(argv: list[str] | None = None, root: Path = ROOT) -> int:
                                   f"холостые XY: {stats['xy_before_mm']:.1f} -> "
                                   f"{stats['xy_after_mm']:.1f} мм") if "holes" in stats else ""
                         report.append(f"OK: {source} -> {len(outputs)} TAP{detail}")
+                        if stats.get("diameters", 0) > 1:
+                            report.append(
+                                "ВНИМАНИЕ: в DRL несколько номинальных диаметров. "
+                                "В одном TAP физически одно сверло: все отверстия "
+                                "получатся по диаметру установленного инструмента."
+                            )
                     except (DrillFileError, OSError, UnicodeError, ValueError) as exc:
                         failed += 1
                         report.append(f"ОШИБКА: {source}\n    {exc}")
