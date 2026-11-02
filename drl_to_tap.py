@@ -229,6 +229,74 @@ def read_drills(path: Path, *,
     return dict(holes), slots
 
 
+def xy_travel_length(points: list[tuple[float, float]]) -> float:
+    """XY-only air travel between drill positions (excluding an unknown work origin)."""
+    return sum(hypot(x2 - x1, y2 - y1)
+               for (x1, y1), (x2, y2) in zip(points, points[1:]))
+
+
+def order_vertical(points: list[tuple[float, float]],
+                   column_width: float = 1.0) -> list[tuple[float, float]]:
+    """Sweep left-to-right in vertical X stripes, minimizing Y turnarounds.
+
+    Within each stripe the Y sequence is monotonic, either bottom-up or
+    top-down. Dynamic programming chooses the orientations that minimize the
+    sum of XY travel within and between stripes. Never increases travel
+    compared with the basic X-then-Y vertical order.
+    """
+    if not isfinite(column_width) or column_width <= 0:
+        raise DrillFileError("Ширина вертикальной полосы должна быть положительной")
+    if len(points) < 2:
+        return list(points)
+
+    min_x = min(x for x, _ in points)
+    columns: dict[int, list[tuple[float, float]]] = defaultdict(list)
+    for point in points:
+        idx = int((point[0] - min_x) // column_width)
+        columns[idx].append(point)
+    stripes = [
+        sorted(columns[idx], key=lambda p: (p[1], p[0]))
+        for idx in sorted(columns)
+    ]
+    internal = [xy_travel_length(stripe) for stripe in stripes]
+    # Direction 0 = bottom-up, 1 = top-down.
+    scores = [internal[0], internal[0]]
+    parents: list[list[int]] = [[-1, -1]]
+    for idx in range(1, len(stripes)):
+        previous, current = stripes[idx - 1], stripes[idx]
+        current_scores: list[float] = []
+        current_parents: list[int] = []
+        for direction in (0, 1):
+            start = current[0] if direction == 0 else current[-1]
+            choices: list[float] = []
+            for prev_dir in (0, 1):
+                end = previous[-1] if prev_dir == 0 else previous[0]
+                choices.append(scores[prev_dir] +
+                               hypot(start[0] - end[0], start[1] - end[1]))
+            winner = min(range(2), key=lambda prev_dir: (choices[prev_dir], prev_dir))
+            current_parents.append(winner)
+            current_scores.append(choices[winner] + internal[idx])
+        scores = current_scores
+        parents.append(current_parents)
+
+    direction = min(range(2), key=lambda d: (scores[d], d))
+    directions = [0] * len(stripes)
+    for idx in range(len(stripes) - 1, -1, -1):
+        directions[idx] = direction
+        direction = parents[idx][direction]
+
+    optimized: list[tuple[float, float]] = []
+    for stripe, direction in zip(stripes, directions):
+        optimized.extend(stripe if direction == 0 else reversed(stripe))
+
+    # A narrow stripe can contain slanted contour points. Keep the vertical
+    # X-major ordering when it happens to require less XY movement.
+    x_major = sorted(points, key=lambda p: (p[0], p[1]))
+    if xy_travel_length(x_major) + 1e-9 < xy_travel_length(optimized):
+        return x_major
+    return optimized
+
+
 def make_gcode(points: list[tuple[float, float]], safe_z: float, approach_z: float,
                drill_z: float, feed: float, spindle: int, dwell: float = 0) -> str:
     """One spindle start and stop; no M0/M1/M6, no G4 dwell."""
@@ -254,13 +322,16 @@ def convert(source: Path, output_dir: Path, *, safe_z: float = 5.0,
             approach_z: float = 0.5, drill_z: float = -2.4,
             feed: float = 50.0, spindle: int = 10000, dwell: float = 0.0,
             skip_slots: bool | None = None, contour_step: float = 1.0,
-            stats: dict[str, int] | None = None) -> list[Path]:
+            column_width: float = 1.0,
+            stats: dict[str, int | float] | None = None) -> list[Path]:
     if not all(isfinite(v) for v in (safe_z, approach_z, drill_z, feed, dwell, contour_step)):
         raise DrillFileError("Параметры перемещений должны быть конечными числами")
     if not (safe_z > approach_z > drill_z and drill_z < 0):
         raise DrillFileError("Требуется z-safe > z-approach > z-drill и z-drill < 0")
     if feed <= 0 or spindle <= 0 or contour_step <= 0:
         raise DrillFileError("Feed, spindle и contour-step должны быть положительными")
+    if not isfinite(column_width) or column_width <= 0:
+        raise DrillFileError("Ширина вертикальной полосы должна быть положительной")
     if dwell < 0:
         raise DrillFileError("Dwell должен быть неотрицательным; G4 в TAP не добавляется")
     if not source.is_file():
@@ -286,9 +357,19 @@ def convert(source: Path, output_dir: Path, *, safe_z: float = 5.0,
                 points.append(position)
     if not points:
         raise DrillFileError("Нет точек сверления")
+
+    # Optimize all round holes and perforation points together. Sorting does
+    # not change positions, depth, number of drills, or the generated G-code.
+    previous_xy = xy_travel_length(points)
+    points = order_vertical(points, column_width=column_width)
+    optimized_xy = xy_travel_length(points)
     if stats is not None:
         stats.update(values)
         stats["drill_positions"] = len(points)
+        stats["xy_before_mm"] = round(previous_xy, 3)
+        stats["xy_after_mm"] = round(optimized_xy, 3)
+    print(f"Вертикальный проход: полосы по X шириной {column_width:g} мм; "
+          f"холостые XY: {previous_xy:.1f} -> {optimized_xy:.1f} мм")
     if len(holes) > 1:
         print(f"ВНИМАНИЕ: в DRL {len(holes)} диаметров. В одном TAP нет смены инструмента!"
               " Фактический диаметр отверстий определяется установленным сверлом.")
@@ -323,6 +404,8 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                         help="Совместимость: параметр игнорируется, пауз G4 нет")
     parser.add_argument("--contour-step", type=float, default=1.0,
                         help="Максимальный шаг отверстий вдоль G01/G85 (мм), по умолчанию 1")
+    parser.add_argument("--column-width", type=float, default=1.0,
+                        help="Ширина вертикальных полос для сортировки по Y, мм [1]")
     route_mode = parser.add_mutually_exclusive_group()
     route_mode.add_argument("--skip-slots", dest="skip_slots", action="store_true",
                             help="Игнорировать все пазы/контуры")
@@ -343,7 +426,8 @@ def main(argv: list[str] | None = None) -> int:
                           safe_z=args.z_safe, approach_z=args.z_approach,
                           drill_z=args.z_drill, feed=args.feed, spindle=args.spindle,
                           dwell=args.dwell, skip_slots=args.skip_slots,
-                          contour_step=args.contour_step)
+                          contour_step=args.contour_step,
+                          column_width=args.column_width)
     except (DrillFileError, OSError, UnicodeError) as exc:
         print(f"ОШИБКА: {exc}", file=sys.stderr)
         return 1

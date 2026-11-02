@@ -79,7 +79,7 @@ def run(argv: list[str] | None = None, root: Path = ROOT) -> int:
             else:
                 for source in files:
                     try:
-                        stats: dict[str, int] = {}
+                        stats: dict[str, int | float] = {}
                         outputs = convert(
                             source, args.output_dir or source.parent,
                             safe_z=args.z_safe, approach_z=args.z_approach,
@@ -87,6 +87,7 @@ def run(argv: list[str] | None = None, root: Path = ROOT) -> int:
                             spindle=args.spindle, dwell=args.dwell,
                             skip_slots=args.skip_slots,
                             contour_step=args.contour_step,
+                            column_width=args.column_width,
                             stats=stats,
                         )
                         success += 1
@@ -94,7 +95,9 @@ def run(argv: list[str] | None = None, root: Path = ROOT) -> int:
                         detail = (f"; обычных отверстий: {stats['holes']}; "
                                   f"режущих сегментов: {stats['slots']}; "
                                   f"точек контура: {stats['contour_points']}; "
-                                  f"всего уникальных позиций: {stats['drill_positions']}") if "holes" in stats else ""
+                                  f"всего уникальных позиций: {stats['drill_positions']}; "
+                                  f"холостые XY: {stats['xy_before_mm']:.1f} -> "
+                                  f"{stats['xy_after_mm']:.1f} мм") if "holes" in stats else ""
                         report.append(f"OK: {source} -> {len(outputs)} TAP{detail}")
                     except (DrillFileError, OSError, UnicodeError, ValueError) as exc:
                         failed += 1
