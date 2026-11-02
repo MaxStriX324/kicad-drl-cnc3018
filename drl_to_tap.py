@@ -12,6 +12,23 @@ from pathlib import Path
 import re
 import sys
 
+
+def configure_console_encoding() -> None:
+    """Do not fail on Cyrillic diagnostics in Windows cp1252/cp866 consoles or CI."""
+    for stream in (sys.stdout, sys.stderr):
+        if not hasattr(stream, "reconfigure"):
+            continue
+        try:
+            if not stream.isatty():
+                stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+            else:
+                stream.reconfigure(errors="backslashreplace")
+        except (OSError, ValueError):
+            pass
+
+
+configure_console_encoding()
+
 TOOL_DEF = re.compile(r"^T(\d+)C(\d+(?:\.\d+)?)$", re.I)
 TOOL_CHANGE = re.compile(r"^T(\d+)$", re.I)
 XY_MOVE = re.compile(r"^X([+-]?\d+(?:\.\d+)?)Y([+-]?\d+(?:\.\d+)?)$", re.I)
