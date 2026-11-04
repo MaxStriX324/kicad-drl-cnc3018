@@ -3,6 +3,8 @@ setlocal EnableExtensions
 chcp 65001 >nul
 cd /d "%~dp0"
 set "PYTHONUTF8=1"
+set "NO_PAUSE=0"
+if /i "%~1"=="/quiet" set "NO_PAUSE=1"
 
 call :check_python
 if not errorlevel 1 goto success
@@ -12,21 +14,21 @@ where winget >nul 2>&1
 if errorlevel 1 (
     echo Install Python 3.10+ from https://www.python.org/downloads/
     echo Enable Add python.exe to PATH, then run install.bat again.
-    pause
+    if "%NO_PAUSE%"=="0" pause
     exit /b 1
 )
 echo Installing Python with winget...
-winget install --id Python.Python.3.13 --exact --source winget --accept-package-agreements --accept-source-agreements
+winget install --id Python.Python.3.13 --exact --source winget --scope user --silent --accept-package-agreements --accept-source-agreements
 if errorlevel 1 (
     echo Python installation failed. Check winget output above.
-    pause
+    if "%NO_PAUSE%"=="0" pause
     exit /b 1
 )
 call :check_python
 if errorlevel 1 (
     echo Python was installed but is not available in this process yet.
     echo Open a new terminal and run install.bat again.
-    pause
+    if "%NO_PAUSE%"=="0" pause
     exit /b 1
 )
 
@@ -34,7 +36,7 @@ if errorlevel 1 (
 if not exist "%~dp0input" mkdir "%~dp0input"
 if not exist "%~dp0auto_convert.py" (
     echo ERROR: auto_convert.py is missing. Download the complete repository ZIP.
-    pause
+    if "%NO_PAUSE%"=="0" pause
     exit /b 1
 )
 echo Python verified. No external Python packages are required.
@@ -50,7 +52,7 @@ if errorlevel 1 (
 ) else (
     echo Tkinter verified. The graphical interface can be launched with gui.bat.
 )
-pause
+if "%NO_PAUSE%"=="0" pause
 exit /b 0
 
 :check_python
@@ -58,6 +60,14 @@ py -3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>
 if not errorlevel 1 exit /b 0
 python -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
 if not errorlevel 1 exit /b 0
+if exist "%LocalAppData%\Programs\Python\Python314\python.exe" (
+  "%LocalAppData%\Programs\Python\Python314\python.exe" -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+  if not errorlevel 1 exit /b 0
+)
+if exist "%LocalAppData%\Programs\Python\Python313\python.exe" (
+  "%LocalAppData%\Programs\Python\Python313\python.exe" -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+  if not errorlevel 1 exit /b 0
+)
 exit /b 1
 
 :check_tk
@@ -65,4 +75,12 @@ py -3 -c "import sys, tkinter; sys.exit(0 if sys.version_info >= (3, 10) else 1)
 if not errorlevel 1 exit /b 0
 python -c "import sys, tkinter; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
 if not errorlevel 1 exit /b 0
+if exist "%LocalAppData%\Programs\Python\Python314\python.exe" (
+  "%LocalAppData%\Programs\Python\Python314\python.exe" -c "import sys, tkinter; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+  if not errorlevel 1 exit /b 0
+)
+if exist "%LocalAppData%\Programs\Python\Python313\python.exe" (
+  "%LocalAppData%\Programs\Python\Python313\python.exe" -c "import sys, tkinter; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+  if not errorlevel 1 exit /b 0
+)
 exit /b 1
