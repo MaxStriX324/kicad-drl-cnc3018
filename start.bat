@@ -41,5 +41,9 @@ if "%~1"=="" pause
 exit /b %CODE%
 
 :run_python
-if /i "%PYTHON_CMD%"=="py -3" (py -3 %*) else ("%PYTHON_CMD%" %*)
+if /i "%PYTHON_CMD%"=="py -3" goto :run_py_launcher
+"%PYTHON_CMD%" %*
+exit /b %errorlevel%
+:run_py_launcher
+py -3 %*
 exit /b %errorlevel%
