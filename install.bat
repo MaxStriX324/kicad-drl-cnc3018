@@ -18,7 +18,7 @@ if errorlevel 1 (
     exit /b 1
 )
 echo Installing Python with winget...
-winget install --id Python.Python.3.13 --exact --source winget --accept-package-agreements --accept-source-agreements
+winget install --id Python.Python.3.13 --exact --source winget --scope user --silent --accept-package-agreements --accept-source-agreements
 if errorlevel 1 (
     echo Python installation failed. Check winget output above.
     if "%NO_PAUSE%"=="0" pause
